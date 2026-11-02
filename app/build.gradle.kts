@@ -15,8 +15,6 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
-        buildConfigField("String", "SUPABASE_URL", "\"https://erfmnjyokqhhilrwijpt.supabase.co\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"\u0024{project.findProperty("SUPABASE_ANON_KEY") ?: ""}\"")
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
