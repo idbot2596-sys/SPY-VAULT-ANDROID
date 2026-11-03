@@ -108,26 +108,26 @@ jobs:
           s=s.replace("Your vault contents are encrypted and stored in app-private local storage. This build does not upload passwords or account details to a cloud service. Keep your master password private.","Your vault is encrypted on this device before cloud upload. Supabase stores encrypted vault data and account metadata; your master password is not uploaded. Keep your master password private.")
           s=s.replace("SPY VAULT  v0.8.2","SPY VAULT  v0.9.5").replace("Current version 0.8.2","Current version 0.9.5")
           s=s.replace("premiumDashboardHero();\n        EditText search=edit", """premiumDashboardHero();
-        // Compact premium quick actions: common tasks remain one tap away.
-        LinearLayout quick=gridRow();
-        quick.addView(quickActionTile("＋","Add Password",()->showEditor(-1)),new LinearLayout.LayoutParams(0,dp(68),1));
-        quick.addView(quickActionTile("▦","Categories",()->showCategories()),new LinearLayout.LayoutParams(0,dp(68),1));
-        quick.addView(quickActionTile("◈","Security",()->showSecurity()),new LinearLayout.LayoutParams(0,dp(68),1));
-        EditText search=edit""")
-          marker="    private LinearLayout gridRow(){"
-          helper="""    private View quickActionTile(String icon,String label,Runnable action){
-        LinearLayout tile=col();tile.setGravity(Gravity.CENTER);tile.setBackground(solid(PANEL,15,BORDER));tile.setElevation(dp(3));padding(tile,5,8,5,8);
-        TextView glyph=txt(icon,19,PINK,true);glyph.setGravity(Gravity.CENTER);tile.addView(glyph);
-        TextView caption=txt(label,9,WHITE,true);caption.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(3);tile.addView(caption,cp);
-        tile.setOnClickListener(v->action.run());return tile;
-    }
-
-"""
+         // Compact premium quick actions: common tasks remain one tap away.
+         LinearLayout quick=gridRow();
+         quick.addView(quickActionTile("＋","Add Password",()->showEditor(-1)),new LinearLayout.LayoutParams(0,dp(68),1));
+         quick.addView(quickActionTile("▦","Categories",()->showCategories()),new LinearLayout.LayoutParams(0,dp(68),1));
+         quick.addView(quickActionTile("◈","Security",()->showSecurity()),new LinearLayout.LayoutParams(0,dp(68),1));
+         EditText search=edit""")
+           marker="    private LinearLayout gridRow(){"
+           helper="""    private View quickActionTile(String icon,String label,Runnable action){
+         LinearLayout tile=col();tile.setGravity(Gravity.CENTER);tile.setBackground(solid(PANEL,15,BORDER));tile.setElevation(dp(3));padding(tile,5,8,5,8);
+         TextView glyph=txt(icon,19,PINK,true);glyph.setGravity(Gravity.CENTER);tile.addView(glyph);
+         TextView caption=txt(label,9,WHITE,true);caption.setGravity(Gravity.CENTER);
+         LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=dp(3);tile.addView(caption,cp);
+         tile.setOnClickListener(v->action.run());return tile;
+     }
+ 
+ """
           if "private View quickActionTile(" not in s:
               s=s.replace(marker,helper+marker)
           s=s.replace("Your vault contents are encrypted and stored in app-private local storage. This build does not upload passwords or account details to a cloud service. Keep your master password private.","Your vault is encrypted on this device before cloud upload. Supabase stores encrypted vault data and account metadata; your master password is not uploaded. Keep your master password private.")
-          s=s.replace("SPY VAULT  v0.8.2","SPY VAULT  v0.9.4").replace("Current version 0.8.2","Current version 0.9.4")
+          s=s.replace("SPY VAULT  v0.8.2","SPY VAULT  v0.9.5").replace("Current version 0.8.2","Current version 0.9.5")
           java.write_text(s)
           gradle=root/"app/build.gradle"
           g=gradle.read_text().replace("versionCode 23","versionCode 25").replace("versionName '0.9.3'","versionName '0.9.5'")
@@ -175,7 +175,7 @@ jobs:
           file "$APK"
           sha256sum "$APK"
 
-      - name: Upload SPY VAULT 0.9.4 APK
+      - name: Upload SPY VAULT 0.9.5 APK
         uses: actions/upload-artifact@v4
         with:
           name: SPY-VAULT-0.9.5-debug-apk
