@@ -46,7 +46,12 @@ jobs:
           p.write_text(s)
           print("Cloud session token parsing patch verified")
           PY
-          grep -F 'packed.split("\\\\.",2)' source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path("source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java").read_text()
+          assert 'packed.split("\\\\.",2)' in s, "Cloud session parser patch was not applied"
+          print("Verified Java split regex uses a literal-dot separator")
+          PY
 
       - name: Build original SPY VAULT debug APK
         run: |
