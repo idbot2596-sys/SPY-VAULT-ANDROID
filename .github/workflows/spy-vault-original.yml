@@ -41,7 +41,7 @@ jobs:
               raise SystemExit("Cloud session parser fix failed")
           row='        settingsRow("Appearance","Theme, accent colors and text size","◐",()->showAppearance());\n'
           if 'settingsRow("App Hider"' not in s:
-              s=s.replace(row,row+'        settingsRow("App Hider","Non-root app privacy compatibility","▣",()->showAppHider());\\n')
+              s=s.replace(row,row+'        settingsRow("App Hider","Non-root app privacy compatibility","▣",()->showAppHider());\n')
           if 'settingsRow("Privacy Disguise"' not in s:
               s=s.replace(row,row+'        settingsRow("Privacy Disguise","Change launcher app name and icon","◉",()->showPrivacyDisguise());\n')
           method=r"""
