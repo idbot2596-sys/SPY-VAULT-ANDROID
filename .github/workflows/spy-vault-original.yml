@@ -1,0 +1,55 @@
+name: SPY VAULT 0.9.4 - Original Source APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'SPY_VAULT_0.9.3_Source.zip'
+      - '.github/workflows/spy-vault-original.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Extract original SPY VAULT source
+        run: |
+          unzip -q SPY_VAULT_0.9.3_Source.zip -d source
+          test -f source/SPY_VAULT_0.9.3/settings.gradle
+          test -f source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
+          grep -F 'packed.split("\\\\.",2)' source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
+
+      - name: Build original SPY VAULT debug APK
+        run: |
+          gradle -p source/SPY_VAULT_0.9.3 --no-daemon clean assembleDebug --stacktrace
+
+      - name: Verify APK output
+        run: |
+          APK="source/SPY_VAULT_0.9.3/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          file "$APK"
+          sha256sum "$APK"
+
+      - name: Upload SPY VAULT 0.9.4 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SPY-VAULT-0.9.4-debug-apk
+          path: source/SPY_VAULT_0.9.3/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
