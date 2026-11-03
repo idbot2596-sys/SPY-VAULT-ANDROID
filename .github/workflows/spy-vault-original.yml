@@ -40,6 +40,8 @@ jobs:
           if 'packed.split("\\\\.",2)' not in s:
               raise SystemExit("Cloud session parser fix failed")
           row='        settingsRow("Appearance","Theme, accent colors and text size","◐",()->showAppearance());\n'
+          if 'settingsRow("App Hider"' not in s:
+              s=s.replace(row,row+'        settingsRow("App Hider","Non-root app privacy compatibility","▣",()->showAppHider());\\n')
           if 'settingsRow("Privacy Disguise"' not in s:
               s=s.replace(row,row+'        settingsRow("Privacy Disguise","Change launcher app name and icon","◉",()->showPrivacyDisguise());\n')
           method=r"""
@@ -78,6 +80,29 @@ jobs:
               }
 
           """
+          app_hider_method=r"""
+              private void showAppHider(){
+                  initInner("App Hider","Non-root app privacy compatibility",()->showSettings());
+                  card("IMPORTANT ANDROID LIMIT","A normal app cannot silently hide or disable other installed apps from Android Settings, package lists, Play Store and system search. Root is not required for supported OEM or Android Private Space features, but availability depends on the device.","ANDROID SECURITY",null);
+                  boolean android15=Build.VERSION.SDK_INT>=35;
+                  card("DEVICE COMPATIBILITY","Android "+Build.VERSION.RELEASE+" · "+(android15?"Android 15+ Private Space may be available":"Private Space requires Android 15 or later on supported devices"),android15?"CHECK DEVICE":"LIMITED",null);
+                  button("OPEN ANDROID PRIVACY SETTINGS",()->{
+                      try{startActivity(new Intent(android.provider.Settings.ACTION_PRIVACY_SETTINGS));}
+                      catch(Exception e){openAppManagement();}
+                  });
+                  button("OPEN INSTALLED APP SETTINGS",()->openAppManagement());
+                  card("HOW TO HIDE APPS","1. Check whether your phone offers Private Space, Hide Apps or App Lock in system settings. 2. Move/select apps using the phone's own feature. 3. Return here to protect vault access with SPY VAULT PIN/biometric. SPY VAULT will not claim an app is hidden unless Android confirms it.","GUIDE",null);
+                  card("DEVICE ADMIN / ROOT","This build does not request root, Accessibility abuse, Device Owner enrollment or permission to silently disable other apps. That avoids breaking system apps or hiding apps from security controls.","NON-ROOT",null);
+                  ghostButton("BACK TO SETTINGS",()->showSettings());
+              }
+              private void openAppManagement(){
+                  try{startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS));}
+                  catch(Exception e){toast("Android app settings are unavailable on this device.");}
+              }
+
+          """
+          if "private void showAppHider()" not in s:
+              s=s.replace("    private void showSecurity() {",app_hider_method+"    private void showSecurity() {")
           if "private void showPrivacyDisguise()" not in s:
               s=s.replace("    private void showSecurity() {",method+"    private void showSecurity() {")
           s=s.replace("Your vault contents are encrypted and stored in app-private local storage. This build does not upload passwords or account details to a cloud service. Keep your master password private.","Your vault is encrypted on this device before cloud upload. Supabase stores encrypted vault data and account metadata; your master password is not uploaded. Keep your master password private.")
