@@ -114,8 +114,8 @@ jobs:
          quick.addView(quickActionTile("▦","Categories",()->showCategories()),new LinearLayout.LayoutParams(0,dp(68),1));
          quick.addView(quickActionTile("◈","Security",()->showSecurity()),new LinearLayout.LayoutParams(0,dp(68),1));
          EditText search=edit""")
-           marker="    private LinearLayout gridRow(){"
-           helper="""    private View quickActionTile(String icon,String label,Runnable action){
+          marker="    private LinearLayout gridRow(){"
+          helper="""    private View quickActionTile(String icon,String label,Runnable action){
          LinearLayout tile=col();tile.setGravity(Gravity.CENTER);tile.setBackground(solid(PANEL,15,BORDER));tile.setElevation(dp(3));padding(tile,5,8,5,8);
          TextView glyph=txt(icon,19,PINK,true);glyph.setGravity(Gravity.CENTER);tile.addView(glyph);
          TextView caption=txt(label,9,WHITE,true);caption.setGravity(Gravity.CENTER);
@@ -125,7 +125,7 @@ jobs:
  
  """
           if "private View quickActionTile(" not in s:
-              s=s.replace(marker,helper+marker)
+            s=s.replace(marker,helper+marker)
           s=s.replace("Your vault contents are encrypted and stored in app-private local storage. This build does not upload passwords or account details to a cloud service. Keep your master password private.","Your vault is encrypted on this device before cloud upload. Supabase stores encrypted vault data and account metadata; your master password is not uploaded. Keep your master password private.")
           s=s.replace("SPY VAULT  v0.8.2","SPY VAULT  v0.9.5").replace("Current version 0.8.2","Current version 0.9.5")
           java.write_text(s)
