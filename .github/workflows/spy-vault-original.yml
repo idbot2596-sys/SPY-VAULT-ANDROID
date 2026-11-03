@@ -33,6 +33,19 @@ jobs:
           unzip -q SPY_VAULT_0.9.3_Source.zip -d source
           test -f source/SPY_VAULT_0.9.3/settings.gradle
           test -f source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java")
+          s = p.read_text()
+          broken = 'packed.split("\\\\\\\\.",2)'
+          fixed = 'packed.split("\\\\.",2)'
+          if broken in s:
+              s = s.replace(broken, fixed, 1)
+          elif fixed not in s:
+              raise SystemExit("Could not locate cloud refresh-token split expression")
+          p.write_text(s)
+          print("Cloud session token parsing patch verified")
+          PY
           grep -F 'packed.split("\\\\.",2)' source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
 
       - name: Build original SPY VAULT debug APK
