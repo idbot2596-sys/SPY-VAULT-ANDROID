@@ -28,34 +28,99 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Extract original SPY VAULT source
+      - name: Extract and upgrade original SPY VAULT source
         run: |
           unzip -q SPY_VAULT_0.9.3_Source.zip -d source
-          test -f source/SPY_VAULT_0.9.3/settings.gradle
-          test -f source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
           python3 - <<'PY'
           from pathlib import Path
-          p = Path("source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java")
-          s = p.read_text()
-          broken = 'packed.split("\\\\\\\\.",2)'
-          fixed = 'packed.split("\\\\.",2)'
-          if broken in s:
-              s = s.replace(broken, fixed, 1)
-          elif fixed not in s:
-              raise SystemExit("Could not locate cloud refresh-token split expression")
-          p.write_text(s)
-          print("Cloud session token parsing patch verified")
+          root=Path("source/SPY_VAULT_0.9.3")
+          java=root/"app/src/main/java/com/spyvault/app/MainActivity.java"
+          s=java.read_text()
+          s=s.replace('packed.split("\\\\\\\\.",2)','packed.split("\\\\.",2)')
+          if 'packed.split("\\\\.",2)' not in s:
+              raise SystemExit("Cloud session parser fix failed")
+          row='        settingsRow("Appearance","Theme, accent colors and text size","◐",()->showAppearance());\\n'
+          if 'settingsRow("Privacy Disguise"' not in s:
+              s=s.replace(row,row+'        settingsRow("Privacy Disguise","Change launcher app name and icon","◉",()->showPrivacyDisguise());\\n')
+          method=r"""
+              // Privacy launcher identity presets use Android activity-aliases.
+              private static final String[] DISGUISE_IDS={"vault","calculator","notes","calendar","weather"};
+              private static final String[] DISGUISE_NAMES={"SPY VAULT","Calculator","Private Notes","Calendar","Weather"};
+              private static final String[] DISGUISE_COMPONENTS={"com.spyvault.app.LauncherVault","com.spyvault.app.LauncherCalculator","com.spyvault.app.LauncherNotes","com.spyvault.app.LauncherCalendar","com.spyvault.app.LauncherWeather"};
+              private void showPrivacyDisguise(){
+                  initInner("Privacy Disguise","Choose how the app appears on your home screen",()->showSettings());
+                  card("PRIVATE LAUNCHER IDENTITY","Change launcher name and icon together. Vault data and cloud account remain unchanged.","ON DEVICE",null);
+                  String selected=getPreferences(0).getString("launcher_disguise","vault");
+                  String[] descriptions={"Original SPY VAULT branding","Looks like a calculator","Looks like a notes app","Looks like a calendar","Looks like a weather app"};
+                  String[] glyphs={"◈","＋","▤","▦","☼"};
+                  for(int i=0;i<DISGUISE_IDS.length;i++){
+                      final int index=i;
+                      LinearLayout item=row();item.setBackground(solid(PANEL,16,selected.equals(DISGUISE_IDS[i])?PURPLE:BORDER));padding(item,13,12,13,12);
+                      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.bottomMargin=dp(8);page.addView(item,lp);
+                      TextView icon=txt(glyphs[i],21,PINK,true);icon.setGravity(Gravity.CENTER);icon.setBackground(solid(PANEL2,12,0));item.addView(icon,new LinearLayout.LayoutParams(dp(42),dp(42)));
+                      LinearLayout info=col();padding(info,12,0,0,0);info.addView(txt(DISGUISE_NAMES[i],13,WHITE,true));info.addView(txt(descriptions[i],10,MUTED,false));item.addView(info,new LinearLayout.LayoutParams(0,-2,1));
+                      item.addView(txt(selected.equals(DISGUISE_IDS[i])?"✓":"○",19,selected.equals(DISGUISE_IDS[i])?GREEN:MUTED,true));
+                      item.setOnClickListener(v->applyLauncherDisguise(index));
+                  }
+                  card("ANDROID NOTE","Launcher refresh may take a few seconds. These are built-in icon/name presets, not arbitrary photo uploads. All icons open the same vault.","INFO",null);
+                  ghostButton("BACK TO SETTINGS",()->showSettings());
+              }
+              private void applyLauncherDisguise(int selected){
+                  android.content.pm.PackageManager pm=getPackageManager();
+                  try{
+                      for(int i=0;i<DISGUISE_COMPONENTS.length;i++){
+                          android.content.ComponentName cn=new android.content.ComponentName(this,DISGUISE_COMPONENTS[i]);
+                          pm.setComponentEnabledSetting(cn,i==selected?android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED:android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,android.content.pm.PackageManager.DONT_KILL_APP);
+                      }
+                      getPreferences(0).edit().putString("launcher_disguise",DISGUISE_IDS[selected]).apply();
+                      toast("Launcher identity changed to "+DISGUISE_NAMES[selected]);showPrivacyDisguise();
+                  }catch(Exception e){toast("Could not change launcher identity: "+e.getMessage());}
+              }
+
+          """
+          if "private void showPrivacyDisguise()" not in s:
+              s=s.replace("    private void showSecurity() {",method+"    private void showSecurity() {")
+          s=s.replace("Your vault contents are encrypted and stored in app-private local storage. This build does not upload passwords or account details to a cloud service. Keep your master password private.","Your vault is encrypted on this device before cloud upload. Supabase stores encrypted vault data and account metadata; your master password is not uploaded. Keep your master password private.")
+          s=s.replace("SPY VAULT  v0.8.2","SPY VAULT  v0.9.4").replace("Current version 0.8.2","Current version 0.9.4")
+          java.write_text(s)
+          gradle=root/"app/build.gradle"
+          g=gradle.read_text().replace("versionCode 23","versionCode 24").replace("versionName '0.9.3'","versionName '0.9.4'")
+          gradle.write_text(g)
+          manifest=root/"app/src/main/AndroidManifest.xml"
+          m=manifest.read_text().replace('android:label="SPY VAULT"','android:label="@string/app_name"')
+          old='''        <activity android:name=".MainActivity" android:exported="true" android:configChanges="keyboardHidden|orientation|screenSize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>'''
+          new='''        <activity android:name=".MainActivity" android:exported="false" android:configChanges="keyboardHidden|orientation|screenSize" />
+                  <activity-alias android:name=".LauncherVault" android:targetActivity=".MainActivity" android:enabled="true" android:exported="true" android:label="SPY VAULT" android:icon="@mipmap/ic_launcher"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
+                  <activity-alias android:name=".LauncherCalculator" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Calculator" android:icon="@drawable/ic_disguise_calculator"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
+                  <activity-alias android:name=".LauncherNotes" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Private Notes" android:icon="@drawable/ic_disguise_notes"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
+                  <activity-alias android:name=".LauncherCalendar" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Calendar" android:icon="@drawable/ic_disguise_calendar"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
+                  <activity-alias android:name=".LauncherWeather" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Weather" android:icon="@drawable/ic_disguise_weather"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>'''
+          if ".LauncherVault" not in m:
+              if old not in m: raise SystemExit("Manifest launcher block not found")
+              m=m.replace(old,new)
+          manifest.write_text(m)
+          (root/"app/src/main/res/values/strings.xml").write_text('<resources><string name="app_name">SPY VAULT</string></resources>\\n')
+          icons={
+            "ic_disguise_calculator.xml":'<path android:fillColor="#FF171923" android:pathData="M4,2h16a2,2 0,0 1,2 2v16a2,2 0,0 1,-2 2H4a2,2 0,0 1,-2 -2V4a2,2 0,0 1,2 -2z"/><path android:fillColor="#FF65D6A5" android:pathData="M6,5h12v4H6z"/><path android:fillColor="#FFFFFFFF" android:pathData="M6,12h3v3H6zM11,12h3v3h-3zM16,12h2v7h-2zM6,17h8v2H6z"/>',
+            "ic_disguise_notes.xml":'<path android:fillColor="#FF192235" android:pathData="M5,2h11l5,5v13a2,2 0,0 1,-2 2H5a2,2 0,0 1,-2 -2V4a2,2 0,0 1,2 -2z"/><path android:fillColor="#FFFFD166" android:pathData="M16,2v5h5z"/><path android:fillColor="#FFFFFFFF" android:pathData="M7,10h10v1.5H7zM7,14h10v1.5H7zM7,18h7v1.5H7z"/>',
+            "ic_disguise_calendar.xml":'<path android:fillColor="#FF20263A" android:pathData="M4,3h16a2,2 0,0 1,2 2v15a2,2 0,0 1,-2 2H4a2,2 0,0 1,-2 -2V5a2,2 0,0 1,2 -2z"/><path android:fillColor="#FFFF647C" android:pathData="M2,7h20v4H2z"/><path android:fillColor="#FFFFFFFF" android:pathData="M6,13h3v3H6zM11,13h3v3h-3zM16,13h3v3h-3zM6,18h3v2H6z"/>',
+            "ic_disguise_weather.xml":'<path android:fillColor="#FF142D4A" android:pathData="M0,0h24v24H0z"/><path android:fillColor="#FFFFD166" android:pathData="M16,3a5,5 0,1 0,5 5a4,4 0,0 1,-5 -5z"/><path android:fillColor="#FFEAF6FF" android:pathData="M6,18a4,4 0,0 1,0 -8a5,5 0,0 1,9 -2a4,4 0,0 1,3 7H6z"/>'
+          }
+          for name,path in icons.items():
+              (root/"app/src/main/res/drawable"/name).write_text('<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="48dp" android:height="48dp" android:viewportWidth="24" android:viewportHeight="24">'+path+'</vector>\\n')
+          print("Applied cloud parser fix, app identity presets, and privacy text update")
           PY
-          python3 - <<'PY'
-          from pathlib import Path
-          s = Path("source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java").read_text()
-          assert 'packed.split("\\\\.",2)' in s, "Cloud session parser patch was not applied"
-          print("Verified Java split regex uses a literal-dot separator")
-          PY
+          grep -q 'LauncherWeather' source/SPY_VAULT_0.9.3/app/src/main/AndroidManifest.xml
+          grep -q 'showPrivacyDisguise' source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
+          grep -q 'packed.split("\\\\.",2)' source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
 
       - name: Build original SPY VAULT debug APK
-        run: |
-          gradle -p source/SPY_VAULT_0.9.3 --no-daemon clean assembleDebug --stacktrace
+        run: gradle -p source/SPY_VAULT_0.9.3 --no-daemon clean assembleDebug --stacktrace
 
       - name: Verify APK output
         run: |
