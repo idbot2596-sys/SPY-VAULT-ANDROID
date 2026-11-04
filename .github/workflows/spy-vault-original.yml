@@ -182,6 +182,192 @@ jobs:
           print("Integrated App Hider entry, launcher disguise presets, icons, and cloud parser fix")
           PY
 
+      - name: Replace settings shortcut with real launcher App Hider
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("source/SPY_VAULT_0.9.3")
+          java = root / "app/src/main/java/com/spyvault/app/MainActivity.java"
+          s = java.read_text()
+          pattern = re.compile(r'private void showAppHider\(\)\s*\{.*?\n\s*\}\s*\n\s*private void openSpyVaultPrivacySettings\(\)', re.S)
+          replacement = '''private void showAppHider() {
+                  initInner("App Hider","Hide apps inside the SPY VAULT launcher",()->showSettings());
+                  card("PRIVATE APP DRAWER","Browse installed apps, search, and hide or restore them from the SPY VAULT Home drawer. Set SPY VAULT Home as your default launcher to use the filtered drawer.", "ON DEVICE", null);
+                  button("OPEN APP DRAWER",()->startActivity(new Intent(this,AppHiderActivity.class)));
+                  button("SET DEFAULT HOME",()->{
+                      try { startActivity(new Intent(android.provider.Settings.ACTION_HOME_SETTINGS)); }
+                      catch(Exception e) { startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)); }
+                  });
+                  card("ANDROID LIMIT","Hidden apps remain installed and may still appear in Android Settings, Play Store, and other launchers. This does not disable or uninstall apps.", "IMPORTANT", null);
+                  ghostButton("BACK TO SETTINGS",()->showSettings());
+              }
+
+              private void openSpyVaultPrivacySettings()'''
+          s2, n = pattern.subn(replacement, s, count=1)
+          if n != 1:
+              raise SystemExit("Could not safely replace the old App Hider settings-only method")
+          java.write_text(s2)
+
+          activity = r"""
+          package com.spyvault.app;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.content.pm.ResolveInfo;
+          import android.graphics.Color;
+          import android.graphics.Typeface;
+          import android.os.Bundle;
+          import android.provider.Settings;
+          import android.view.Gravity;
+          import android.widget.*;
+          import java.util.*;
+
+          public class AppHiderActivity extends Activity {
+              private final int bg = Color.rgb(13,15,24), panel = Color.rgb(27,31,46);
+              private final int white = Color.WHITE, muted = Color.rgb(166,173,194), accent = Color.rgb(132,91,245);
+              private LinearLayout rows;
+              private EditText search;
+              private boolean hiddenTab = false;
+              private final Set<String> hidden = new HashSet<>();
+              private final List<ResolveInfo> apps = new ArrayList<>();
+
+              private int dp(int n) { return (int)(n * getResources().getDisplayMetrics().density + .5f); }
+              private TextView label(String value, int size, int color, boolean bold) {
+                  TextView t = new TextView(this); t.setText(value); t.setTextSize(size); t.setTextColor(color);
+                  if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  return t;
+              }
+              private LinearLayout column() { LinearLayout l = new LinearLayout(this); l.setOrientation(1); return l; }
+              private Button action(String value, Runnable run) {
+                  Button b = new Button(this); b.setText(value); b.setTextColor(white);
+                  b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(accent));
+                  b.setOnClickListener(v -> run.run()); return b;
+              }
+
+              @Override public void onCreate(Bundle state) {
+                  super.onCreate(state);
+                  Set<String> saved = getPreferences(0).getStringSet("hidden_packages", Collections.<String>emptySet());
+                  hidden.addAll(saved);
+                  loadApps();
+                  render();
+              }
+
+              private void loadApps() {
+                  Intent query = new Intent(Intent.ACTION_MAIN);
+                  query.addCategory(Intent.CATEGORY_LAUNCHER);
+                  List<ResolveInfo> found = getPackageManager().queryIntentActivities(query, 0);
+                  for (ResolveInfo ri : found) {
+                      if (ri.activityInfo == null) continue;
+                      String pkg = ri.activityInfo.packageName;
+                      if (!getPackageName().equals(pkg)) apps.add(ri);
+                  }
+                  Collections.sort(apps, (a,b) -> String.valueOf(a.loadLabel(getPackageManager())).compareToIgnoreCase(String.valueOf(b.loadLabel(getPackageManager()))));
+              }
+
+              private void render() {
+                  LinearLayout root = column(); root.setBackgroundColor(bg); root.setPadding(dp(18),dp(24),dp(18),dp(12));
+                  setContentView(root);
+                  root.addView(label("SPY VAULT HOME",22,white,true));
+                  TextView sub = label("Your private launcher app drawer",12,muted,false);
+                  LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(-1,-2); sp.topMargin=dp(4); root.addView(sub,sp);
+                  Button setHome = action("SET AS DEFAULT HOME", () -> {
+                      try { startActivity(new Intent(Settings.ACTION_HOME_SETTINGS)); }
+                      catch(Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
+                  });
+                  LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(-1,-2); hp.topMargin=dp(12); root.addView(setHome,hp);
+                  LinearLayout tabs = new LinearLayout(this);
+                  Button all = action("ALL APPS",()->{hiddenTab=false; refresh();});
+                  Button hid = action("HIDDEN ("+hidden.size()+")",()->{hiddenTab=true; refresh();});
+                  LinearLayout.LayoutParams p1=new LinearLayout.LayoutParams(0,-2,1); p1.setMargins(0,dp(8),dp(4),dp(8)); tabs.addView(all,p1);
+                  LinearLayout.LayoutParams p2=new LinearLayout.LayoutParams(0,-2,1); p2.setMargins(dp(4),dp(8),0,dp(8)); tabs.addView(hid,p2);
+                  root.addView(tabs);
+                  search = new EditText(this); search.setSingleLine(true); search.setHint("Search installed apps");
+                  search.setTextColor(white); search.setHintTextColor(muted); search.setPadding(dp(12),dp(8),dp(12),dp(8));
+                  search.setBackgroundTintList(android.content.res.ColorStateList.valueOf(panel)); root.addView(search);
+                  ScrollView scroll = new ScrollView(this); rows = column(); scroll.addView(rows);
+                  LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1,0,1); rp.topMargin=dp(8); root.addView(scroll,rp);
+                  search.addTextChangedListener(new android.text.TextWatcher() {
+                      public void beforeTextChanged(CharSequence s,int st,int c,int a) {}
+                      public void onTextChanged(CharSequence s,int st,int before,int count) { populate(); }
+                      public void afterTextChanged(android.text.Editable e) {}
+                  });
+                  populate();
+              }
+
+              private void refresh() { render(); }
+              private void populate() {
+                  if (rows == null) return;
+                  rows.removeAllViews();
+                  String q = search.getText().toString().toLowerCase(Locale.ROOT);
+                  int count=0;
+                  for (ResolveInfo ri : apps) {
+                      String pkg=ri.activityInfo.packageName;
+                      boolean isHidden=hidden.contains(pkg);
+                      if (hiddenTab != isHidden) continue;
+                      String name=String.valueOf(ri.loadLabel(getPackageManager()));
+                      if (!name.toLowerCase(Locale.ROOT).contains(q) && !pkg.toLowerCase(Locale.ROOT).contains(q)) continue;
+                      addRow(ri,name,pkg,isHidden); count++;
+                  }
+                  if (count==0) {
+                      TextView empty=label(hiddenTab?"No hidden apps yet":"No matching apps",14,muted,false);
+                      empty.setGravity(Gravity.CENTER); empty.setPadding(0,dp(28),0,dp(28)); rows.addView(empty);
+                  }
+              }
+
+              private void addRow(ResolveInfo ri,String name,String pkg,boolean isHidden) {
+                  LinearLayout row=new LinearLayout(this); row.setGravity(Gravity.CENTER_VERTICAL); row.setPadding(dp(10),dp(8),dp(8),dp(8)); row.setBackgroundColor(panel);
+                  LinearLayout.LayoutParams rowp=new LinearLayout.LayoutParams(-1,-2); rowp.bottomMargin=dp(7); rows.addView(row,rowp);
+                  ImageView icon=new ImageView(this);
+                  try { icon.setImageDrawable(ri.loadIcon(getPackageManager())); } catch(Exception ignored) {}
+                  row.addView(icon,new LinearLayout.LayoutParams(dp(42),dp(42)));
+                  LinearLayout info=column(); info.setPadding(dp(10),0,dp(4),0);
+                  info.addView(label(name,14,white,true)); info.addView(label(pkg,9,muted,false));
+                  row.addView(info,new LinearLayout.LayoutParams(0,-2,1));
+                  Button toggle=new Button(this); toggle.setText(isHidden?"UNHIDE":"HIDE"); toggle.setTextSize(10); toggle.setTextColor(white);
+                  toggle.setBackgroundTintList(android.content.res.ColorStateList.valueOf(isHidden?Color.rgb(35,145,105):accent));
+                  toggle.setOnClickListener(v -> {
+                      if (isHidden) hidden.remove(pkg); else hidden.add(pkg);
+                      getPreferences(0).edit().putStringSet("hidden_packages",new HashSet<>(hidden)).apply();
+                      Toast.makeText(this,isHidden?"App restored in SPY VAULT Home":"App hidden from SPY VAULT Home",Toast.LENGTH_SHORT).show();
+                      populate();
+                  });
+                  row.addView(toggle,new LinearLayout.LayoutParams(dp(88),dp(46)));
+                  if (!isHidden) row.setOnClickListener(v -> {
+                      try { Intent launch=getPackageManager().getLaunchIntentForPackage(pkg); if(launch!=null) startActivity(launch); }
+                      catch(Exception e) { Toast.makeText(this,"Cannot launch this app",Toast.LENGTH_SHORT).show(); }
+                  });
+              }
+          }
+          """
+          out = root / "app/src/main/java/com/spyvault/app/AppHiderActivity.java"
+          out.write_text(activity)
+
+          manifest = root / "app/src/main/AndroidManifest.xml"
+          m = manifest.read_text()
+          if "<queries>" not in m:
+              m = m.replace("<application", """<queries>
+                  <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent>
+              </queries>
+              <application""", 1)
+          if ".AppHiderActivity" not in m:
+              m = m.replace("</application>", """<activity android:name=".AppHiderActivity" android:exported="true">
+                  <intent-filter>
+                      <action android:name="android.intent.action.MAIN"/>
+                      <category android:name="android.intent.category.HOME"/>
+                      <category android:name="android.intent.category.DEFAULT"/>
+                  </intent-filter>
+              </activity>
+              </application>""")
+          manifest.write_text(m)
+          if "AppHiderActivity" not in manifest.read_text() or "hidden_packages" not in out.read_text():
+              raise SystemExit("App Hider verification failed")
+          print("Real launcher app drawer and persisted hide/unhide controls integrated.")
+          PY
+
       - name: Build original SPY VAULT with features
         shell: bash
         run: |
