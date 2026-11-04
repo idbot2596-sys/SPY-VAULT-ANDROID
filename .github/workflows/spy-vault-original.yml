@@ -6,6 +6,7 @@ name: SPY VAULT Original Java Build with Privacy Features
     paths:
       - SPY_VAULT_0.9.3_Source.zip
       - .github/workflows/spy-vault-original.yml
+      - launcher/AppHiderActivity.java
 
 permissions:
   contents: read
@@ -368,6 +369,23 @@ jobs:
           print("Real launcher app drawer and persisted hide/unhide controls integrated.")
           PY
 
+      - name: Install professional SPY VAULT Home launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST=source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/AppHiderActivity.java
+          test -s launcher/AppHiderActivity.java
+          mkdir -p "$(dirname "$DEST")"
+          cp launcher/AppHiderActivity.java "$DEST"
+          GRADLE_FILE=source/SPY_VAULT_0.9.3/app/build.gradle
+          sed -i "s/versionCode 24/versionCode 25/" "$GRADLE_FILE"
+          sed -i "s/versionName '0.9.5'/versionName '0.9.6'/" "$GRADLE_FILE"
+          grep -q 'void showHome()' "$DEST"
+          grep -q 'void showDrawer()' "$DEST"
+          grep -q 'void onBackPressed()' "$DEST"
+          grep -q 'KEY_HIDDEN' "$DEST"
+          echo "Professional Home screen, app drawer, search, hide/restore and Back handling installed."
+
       - name: Build original SPY VAULT with features
         shell: bash
         run: |
@@ -385,11 +403,12 @@ jobs:
           BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
           "$ANDROID_HOME/build-tools/$BT/aapt" dump badging "$APK" | grep -E "package: name='com.spyvault.app'"
           "$ANDROID_HOME/build-tools/$BT/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -q LauncherCalculator
+          "$ANDROID_HOME/build-tools/$BT/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -q AppHiderActivity
 
       - name: Upload SPY VAULT feature build
         uses: actions/upload-artifact@v4
         with:
-          name: SPY-VAULT-0.9.5-privacy-features-debug-apk
+          name: SPY-VAULT-0.9.6-professional-launcher-debug-apk
           path: source/SPY_VAULT_0.9.3/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
