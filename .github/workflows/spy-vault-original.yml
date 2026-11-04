@@ -1,4 +1,4 @@
-name: SPY VAULT Original Java Build with Privacy Features
+name: SPY VAULT Original Java Build with Real App Hider
 
 'on':
   workflow_dispatch:
@@ -12,31 +12,25 @@ permissions:
 
 jobs:
   build-original:
-    name: Build original SPY VAULT with privacy features
+    name: Build SPY VAULT with launcher-level app hiding
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source repository
-        uses: actions/checkout@v4
-
-      - name: Install Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Install Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Extract original source archive
-        shell: bash
+      - name: Extract original source
         run: |
           set -euo pipefail
           unzip -q SPY_VAULT_0.9.3_Source.zip -d source
           test -f source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
 
-      - name: Integrate App Hider and launcher disguise features
+      - name: Add actual app drawer and hide controls
         shell: bash
         run: |
           set -euo pipefail
@@ -45,165 +39,266 @@ jobs:
           import re
 
           root = Path("source/SPY_VAULT_0.9.3")
-          java = root / "app/src/main/java/com/spyvault/app/MainActivity.java"
+          app = root / "app"
+          java = app / "src/main/java/com/spyvault/app/MainActivity.java"
           s = java.read_text()
 
-          # Fix the escaped-dot parser bug in the saved cloud session token.
+          # Fix the known escaped-dot cloud session parser issue.
           s = s.replace('packed.split("\\\\.",2)', 'packed.split("\\.",2)')
 
-          settings_anchor = '        settingsRow("Appearance","Theme, accent colors and text size","◐",()->showAppearance());'
-          if settings_anchor not in s:
-              raise SystemExit("Could not find original Settings insertion point")
-          if 'settingsRow("Privacy Disguise"' not in s:
-              s = s.replace(settings_anchor, settings_anchor + '\n        settingsRow("Privacy Disguise","Change launcher name and icon","◉",()->showPrivacyDisguise());')
+          # Add the real App Hider entry to original settings.
+          anchor = '        settingsRow("Appearance","Theme, accent colors and text size","◐",()->showAppearance());'
+          if anchor not in s:
+              raise SystemExit("Original Settings anchor not found")
           if 'settingsRow("App Hider"' not in s:
-              s = s.replace(settings_anchor, settings_anchor + '\n        settingsRow("App Hider","Open Android app privacy controls","▣",()->showAppHider());')
+              s = s.replace(anchor, anchor + '\n        settingsRow("App Hider","Hide apps from the SPY VAULT app drawer","▣",()->showAppHider());')
 
-          methods = r"""
-              private static final String[] DISGUISE_IDS = {"vault","calculator","notes","calendar","weather"};
-              private static final String[] DISGUISE_NAMES = {"SPY VAULT","Calculator","Private Notes","Calendar","Weather"};
-              private static final String[] DISGUISE_COMPONENTS = {
-                  "com.spyvault.app.LauncherVault",
-                  "com.spyvault.app.LauncherCalculator",
-                  "com.spyvault.app.LauncherNotes",
-                  "com.spyvault.app.LauncherCalendar",
-                  "com.spyvault.app.LauncherWeather"
-              };
-
-              private void showPrivacyDisguise() {
-                  initInner("Privacy Disguise","Choose the name and icon shown by your launcher",()->showSettings());
-                  String selected = getPreferences(0).getString("launcher_disguise","vault");
-                  settingsRow("SPY VAULT","Original app identity",selected.equals("vault")?"✓":"◈",()->applyLauncherDisguise(0));
-                  settingsRow("Calculator","Calculator-style launcher identity",selected.equals("calculator")?"✓":"＋",()->applyLauncherDisguise(1));
-                  settingsRow("Private Notes","Notes-style launcher identity",selected.equals("notes")?"✓":"▤",()->applyLauncherDisguise(2));
-                  settingsRow("Calendar","Calendar-style launcher identity",selected.equals("calendar")?"✓":"▦",()->applyLauncherDisguise(3));
-                  settingsRow("Weather","Weather-style launcher identity",selected.equals("weather")?"✓":"☼",()->applyLauncherDisguise(4));
-                  TextView note = txt("These presets change only SPY VAULT's launcher label and icon. They do not hide the app from Android Settings, Play Store, or system app lists. Launcher refresh may take a few seconds.",10,MUTED,false);
-                  LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1,-2);
-                  np.topMargin = dp(10);
-                  page.addView(note,np);
+          # Replace the old shortcut-only screen with the real launcher manager entry.
+          start = s.find("              private void showAppHider() {")
+          if start < 0:
+              start = s.find("    private void showAppHider() {")
+          if start >= 0:
+              end = s.find("    private void openSpyVaultPrivacySettings()", start)
+              if end < 0:
+                  raise SystemExit("Could not find end of old App Hider methods")
+              replacement = '''    private void showAppHider() {
+                  initInner("App Hider","Manage which apps appear in the SPY VAULT launcher",()->showSettings());
+                  card("REAL APP DRAWER","Browse installed launchable apps, hide selected apps from the SPY VAULT Home app drawer, and restore them whenever you want. To use this as your phone home screen, choose SPY VAULT Home as the default launcher.","ON DEVICE",null);
+                  button("OPEN APP HIDER",()->startActivity(new Intent(this,AppHiderActivity.class)));
+                  button("SET DEFAULT HOME LAUNCHER",()->{
+                      try { startActivity(new Intent(android.provider.Settings.ACTION_HOME_SETTINGS)); }
+                      catch(Exception e) { startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)); }
+                  });
+                  card("IMPORTANT LIMIT","Apps hidden here are removed only from the SPY VAULT launcher drawer. Android Settings, Play Store, and other launchers can still show installed apps. This does not silently disable or uninstall apps.","ANDROID LIMIT",null);
+                  ghostButton("BACK TO SETTINGS",()->showSettings());
               }
 
-              private void applyLauncherDisguise(int selected) {
-                  android.content.pm.PackageManager pm = getPackageManager();
-                  try {
-                      for (int i=0; i<DISGUISE_COMPONENTS.length; i++) {
-                          android.content.ComponentName component = new android.content.ComponentName(this,DISGUISE_COMPONENTS[i]);
-                          pm.setComponentEnabledSetting(component,
-                              i==selected ? android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED : android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                              android.content.pm.PackageManager.DONT_KILL_APP);
-                      }
-                      getPreferences(0).edit().putString("launcher_disguise",DISGUISE_IDS[selected]).apply();
-                      toast("Launcher identity changed to "+DISGUISE_NAMES[selected]);
-                      showPrivacyDisguise();
-                  } catch (Exception e) {
-                      toast("Could not change launcher identity: "+e.getMessage());
-                  }
+      '''
+              s = s[:start] + replacement + s[end:]
+          else:
+              # Insert when source does not already contain an App Hider screen.
+              anchor2 = "    private void showSecurity() {"
+              if anchor2 not in s: raise SystemExit("Could not find App Hider insertion point")
+              s = s.replace(anchor2, '''    private void showAppHider() {
+                  initInner("App Hider","Manage apps in the SPY VAULT launcher",()->showSettings());
+                  button("OPEN APP HIDER",()->startActivity(new Intent(this,AppHiderActivity.class)));
+                  button("SET DEFAULT HOME LAUNCHER",()->startActivity(new Intent(android.provider.Settings.ACTION_HOME_SETTINGS)));
               }
 
-              private void showAppHider() {
-                  initInner("App Hider","Use Android or your phone maker's supported privacy controls",()->showSettings());
-                  TextView explanation = txt("Android does not let an ordinary non-root app silently hide other installed apps from system Settings, package lists, or Play Store. This screen opens the device's built-in controls instead; availability depends on your phone model and Android version.",10,MUTED,false);
-                  LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(-1,-2);
-                  ep.bottomMargin = dp(14);
-                  page.addView(explanation,ep);
-                  settingsRow("Privacy Settings","Open Android privacy controls","◈",()->openSpyVaultPrivacySettings());
-                  settingsRow("Installed Apps","Open Android app management","▣",()->openSpyVaultAppSettings());
-                  settingsRow("Device Private Space","Check Android's supported private profile feature","▤",()->openSpyVaultPrivateSpace());
-                  TextView warning = txt("No root, Device Owner, Accessibility abuse, or silent app disabling is used. If your device has a built-in Hide Apps / Private Space feature, configure it there.",10,MUTED,false);
-                  LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-1,-2);
-                  wp.topMargin = dp(12);
-                  page.addView(warning,wp);
-              }
-
-              private void openSpyVaultPrivacySettings() {
-                  try { startActivity(new Intent(android.provider.Settings.ACTION_PRIVACY_SETTINGS)); }
-                  catch (Exception e) { openSpyVaultAppSettings(); }
-              }
-
-              private void openSpyVaultAppSettings() {
-                  try { startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS)); }
-                  catch (Exception e) { toast("Android app settings are unavailable on this device."); }
-              }
-
-              private void openSpyVaultPrivateSpace() {
-                  if (Build.VERSION.SDK_INT >= 35) {
-                      try { startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)); }
-                      catch (Exception e) { toast("Open Settings and search for Private Space or Hide Apps."); }
-                  } else {
-                      toast("Private Space requires Android 15 or later and device support. Check your phone's Hide Apps settings.");
-                  }
-              }
-
-          """
-          if "private void showPrivacyDisguise()" not in s:
-              anchor = "    private void showSecurity() {"
-              if anchor not in s:
-                  raise SystemExit("Could not find Java method insertion point")
-              s = s.replace(anchor, methods + anchor)
-
+      ''' + anchor2)
           java.write_text(s)
 
-          # Turn the launcher activity into non-launchable target and expose aliases.
-          manifest = root / "app/src/main/AndroidManifest.xml"
+          activity = r"""
+          package com.spyvault.app;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ResolveInfo;
+          import android.graphics.Color;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.Drawable;
+          import android.os.Bundle;
+          import android.provider.Settings;
+          import android.view.Gravity;
+          import android.view.View;
+          import android.view.ViewGroup;
+          import android.widget.Button;
+          import android.widget.EditText;
+          import android.widget.ImageView;
+          import android.widget.LinearLayout;
+          import android.widget.ScrollView;
+          import android.widget.TextView;
+          import android.widget.Toast;
+          import java.util.ArrayList;
+          import java.util.Collections;
+          import java.util.Comparator;
+          import java.util.HashSet;
+          import java.util.List;
+          import java.util.Locale;
+          import java.util.Set;
+
+          public class AppHiderActivity extends Activity {
+              private final int BG = Color.rgb(12,14,22);
+              private final int PANEL = Color.rgb(25,28,42);
+              private final int WHITE = Color.WHITE;
+              private final int MUTED = Color.rgb(165,170,190);
+              private final int PURPLE = Color.rgb(151,92,255);
+              private LinearLayout list;
+              private EditText search;
+              private boolean showHidden = false;
+              private List<ResolveInfo> apps = new ArrayList<>();
+              private Set<String> hidden = new HashSet<>();
+
+              @Override public void onCreate(Bundle state) {
+                  super.onCreate(state);
+                  hidden = new HashSet<>(getPreferences(0).getStringSet("hidden_packages", new HashSet<>()));
+                  loadApps();
+                  render();
+              }
+
+              private void loadApps() {
+                  Intent query = new Intent(Intent.ACTION_MAIN, null);
+                  query.addCategory(Intent.CATEGORY_LAUNCHER);
+                  apps = getPackageManager().queryIntentActivities(query, 0);
+                  final String own = getPackageName();
+                  List<ResolveInfo> filtered = new ArrayList<>();
+                  for (ResolveInfo ri : apps) {
+                      if (ri.activityInfo == null || own.equals(ri.activityInfo.packageName)) continue;
+                      filtered.add(ri);
+                  }
+                  Collections.sort(filtered, new Comparator<ResolveInfo>() {
+                      @Override public int compare(ResolveInfo a, ResolveInfo b) {
+                          return String.valueOf(a.loadLabel(getPackageManager())).compareToIgnoreCase(String.valueOf(b.loadLabel(getPackageManager())));
+                      }
+                  });
+                  apps = filtered;
+              }
+
+              private int dp(float v) { return (int)(v * getResources().getDisplayMetrics().density + 0.5f); }
+              private TextView text(String value, int size, int color, boolean bold) {
+                  TextView t = new TextView(this);
+                  t.setText(value); t.setTextSize(size); t.setTextColor(color);
+                  if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                  return t;
+              }
+              private LinearLayout vertical() {
+                  LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); return l;
+              }
+              private Button button(String label, Runnable action) {
+                  Button b = new Button(this); b.setText(label); b.setTextColor(WHITE);
+                  b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(PURPLE));
+                  b.setOnClickListener(v -> action.run()); return b;
+              }
+              private void render() {
+                  LinearLayout root = vertical(); root.setBackgroundColor(BG);
+                  root.setPadding(dp(18),dp(22),dp(18),dp(12));
+                  setContentView(root);
+                  TextView title = text("SPY VAULT HOME",22,WHITE,true); root.addView(title);
+                  TextView subtitle = text("Choose which apps appear in this launcher",12,MUTED,false);
+                  LinearLayout.LayoutParams sm = new LinearLayout.LayoutParams(-1,-2); sm.topMargin=dp(5); root.addView(subtitle,sm);
+                  Button home = button("SET AS DEFAULT HOME", () -> {
+                      try { startActivity(new Intent(Settings.ACTION_HOME_SETTINGS)); }
+                      catch(Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
+                  });
+                  LinearLayout.LayoutParams hm = new LinearLayout.LayoutParams(-1,-2); hm.topMargin=dp(12); root.addView(home,hm);
+                  LinearLayout tabs = new LinearLayout(this); tabs.setOrientation(LinearLayout.HORIZONTAL);
+                  Button all = button("ALL APPS",()->{showHidden=false;refresh();});
+                  Button hid = button("HIDDEN ("+hidden.size()+")",()->{showHidden=true;refresh();});
+                  LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0,-2,1); half.setMargins(0,dp(8),dp(4),dp(8)); tabs.addView(all,half);
+                  LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0,-2,1); half2.setMargins(dp(4),dp(8),0,dp(8)); tabs.addView(hid,half2);
+                  root.addView(tabs);
+                  search = new EditText(this); search.setSingleLine(true); search.setTextColor(WHITE);
+                  search.setHintTextColor(MUTED); search.setHint("Search apps"); search.setBackgroundColor(PANEL);
+                  search.setPadding(dp(12),dp(8),dp(12),dp(8)); root.addView(search);
+                  ScrollView scroll = new ScrollView(this); list = vertical();
+                  list.setPadding(0,dp(8),0,dp(20)); scroll.addView(list);
+                  LinearLayout.LayoutParams sl = new LinearLayout.LayoutParams(-1,0,1); sl.topMargin=dp(6); root.addView(scroll,sl);
+                  search.addTextChangedListener(new android.text.TextWatcher() {
+                      public void beforeTextChanged(CharSequence s,int st,int c,int a) {}
+                      public void onTextChanged(CharSequence s,int st,int before,int count) { populate(); }
+                      public void afterTextChanged(android.text.Editable e) {}
+                  });
+                  populate();
+              }
+              private void refresh() { render(); }
+              private void populate() {
+                  if (list == null) return;
+                  list.removeAllViews();
+                  String q = search == null ? "" : search.getText().toString().toLowerCase(Locale.ROOT);
+                  int count=0;
+                  for (ResolveInfo ri : apps) {
+                      String pkg = ri.activityInfo.packageName;
+                      boolean isHidden = hidden.contains(pkg);
+                      if (showHidden != isHidden) continue;
+                      String label = String.valueOf(ri.loadLabel(getPackageManager()));
+                      if (!label.toLowerCase(Locale.ROOT).contains(q) && !pkg.toLowerCase(Locale.ROOT).contains(q)) continue;
+                      addAppRow(ri,label,pkg,isHidden); count++;
+                  }
+                  if (count==0) {
+                      TextView empty=text(showHidden?"No hidden apps":"No apps found",14,MUTED,false);
+                      empty.setGravity(Gravity.CENTER); empty.setPadding(0,dp(30),0,dp(30)); list.addView(empty);
+                  }
+              }
+              private void addAppRow(ResolveInfo ri,String label,String pkg,boolean isHidden) {
+                  LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL);
+                  row.setGravity(Gravity.CENTER_VERTICAL); row.setBackgroundColor(PANEL);
+                  row.setPadding(dp(10),dp(9),dp(8),dp(9));
+                  LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1,-2); rp.bottomMargin=dp(7); list.addView(row,rp);
+                  ImageView icon = new ImageView(this);
+                  try { icon.setImageDrawable(ri.loadIcon(getPackageManager())); } catch(Exception ignored) {}
+                  row.addView(icon,new LinearLayout.LayoutParams(dp(42),dp(42)));
+                  LinearLayout info=vertical(); info.setPadding(dp(10),0,dp(5),0);
+                  TextView name=text(label,14,WHITE,true); info.addView(name);
+                  TextView packageName=text(pkg,9,MUTED,false); info.addView(packageName);
+                  LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(0,-2,1); row.addView(info,ip);
+                  Button action = new Button(this); action.setText(isHidden?"UNHIDE":"HIDE");
+                  action.setTextSize(10); action.setTextColor(WHITE);
+                  action.setBackgroundTintList(android.content.res.ColorStateList.valueOf(isHidden?Color.rgb(40,150,105):PURPLE));
+                  action.setOnClickListener(v -> {
+                      if (isHidden) hidden.remove(pkg); else hidden.add(pkg);
+                      getPreferences(0).edit().putStringSet("hidden_packages",new HashSet<>(hidden)).apply();
+                      Toast.makeText(this,isHidden?"App restored in SPY VAULT Home":"App hidden from SPY VAULT Home",Toast.LENGTH_SHORT).show();
+                      populate();
+                  });
+                  row.addView(action,new LinearLayout.LayoutParams(dp(88),dp(44)));
+                  if (!isHidden) {
+                      row.setOnClickListener(v -> {
+                          try { Intent launch=getPackageManager().getLaunchIntentForPackage(pkg); if(launch!=null) startActivity(launch); }
+                          catch(Exception e) { Toast.makeText(this,"Unable to open app",Toast.LENGTH_SHORT).show(); }
+                      });
+                  }
+              }
+          }
+          """
+          (app / "src/main/java/com/spyvault/app/AppHiderActivity.java").write_text(activity)
+
+          manifest = app / "src/main/AndroidManifest.xml"
           m = manifest.read_text()
-          old = re.compile(r'<activity android:name="\.MainActivity" android:exported="true" android:configChanges="keyboardHidden\|orientation\|screenSize">\s*<intent-filter>\s*<action android:name="android.intent.action.MAIN"/>\s*<category android:name="android.intent.category.LAUNCHER"/>\s*</intent-filter>\s*</activity>')
-          aliases = '''
-                  <activity android:name=".MainActivity" android:exported="false" android:configChanges="keyboardHidden|orientation|screenSize" />
-                  <activity-alias android:name=".LauncherVault" android:targetActivity=".MainActivity" android:enabled="true" android:exported="true" android:label="SPY VAULT" android:icon="@mipmap/ic_launcher"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
-                  <activity-alias android:name=".LauncherCalculator" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Calculator" android:icon="@drawable/ic_disguise_calculator"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
-                  <activity-alias android:name=".LauncherNotes" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Private Notes" android:icon="@drawable/ic_disguise_notes"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
-                  <activity-alias android:name=".LauncherCalendar" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Calendar" android:icon="@drawable/ic_disguise_calendar"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
-                  <activity-alias android:name=".LauncherWeather" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Weather" android:icon="@drawable/ic_disguise_weather"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
-          '''
-          if ".LauncherVault" not in m:
-              m2, count = old.subn(aliases.strip(),m,count=1)
-              if count != 1:
-                  raise SystemExit("Original launcher activity block did not match; refusing unsafe manifest edit")
-              m = m2
+          if "<queries>" not in m:
+              m = m.replace('<application', '''<queries>
+                  <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent>
+              </queries>
+              <application''',1)
+          if 'android:name=".AppHiderActivity"' not in m:
+              m = m.replace('</application>', '''<activity android:name=".AppHiderActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.HOME"/>
+                          <category android:name="android.intent.category.DEFAULT"/>
+                      </intent-filter>
+                  </activity>
+              </application>''')
           manifest.write_text(m)
 
-          gradle = root / "app/build.gradle"
-          g = gradle.read_text().replace("versionCode 23","versionCode 24").replace("versionName '0.9.3'","versionName '0.9.5'")
+          gradle = app / "build.gradle"
+          g = gradle.read_text().replace("versionCode 24","versionCode 25").replace("versionCode 23","versionCode 25").replace("versionName '0.9.3'","versionName '0.9.6'")
           gradle.write_text(g)
 
-          (root / "app/src/main/res/drawable").mkdir(parents=True,exist_ok=True)
-          vectors = {
-            "ic_disguise_calculator.xml": '<path android:fillColor="#FF171923" android:pathData="M4,2h16a2,2 0,0 1,2 2v16a2,2 0,0 1,-2 2H4a2,2 0,0 1,-2 -2V4a2,2 0,0 1,2 -2z"/><path android:fillColor="#FF65D6A5" android:pathData="M6,5h12v4H6z"/><path android:fillColor="#FFFFFFFF" android:pathData="M6,12h3v3H6zM11,12h3v3h-3zM16,12h2v7h-2zM6,17h8v2H6z"/>',
-            "ic_disguise_notes.xml": '<path android:fillColor="#FF192235" android:pathData="M5,2h11l5,5v13a2,2 0,0 1,-2 2H5a2,2 0,0 1,-2 -2V4a2,2 0,0 1,2 -2z"/><path android:fillColor="#FFFFD166" android:pathData="M16,2v5h5z"/><path android:fillColor="#FFFFFFFF" android:pathData="M7,10h10v1.5H7zM7,14h10v1.5H7zM7,18h7v1.5H7z"/>',
-            "ic_disguise_calendar.xml": '<path android:fillColor="#FF20263A" android:pathData="M4,3h16a2,2 0,0 1,2 2v15a2,2 0,0 1,-2 2H4a2,2 0,0 1,-2 -2V5a2,2 0,0 1,2 -2z"/><path android:fillColor="#FFFF647C" android:pathData="M2,7h20v4H2z"/><path android:fillColor="#FFFFFFFF" android:pathData="M6,13h3v3H6zM11,13h3v3h-3zM16,13h3v3h-3zM6,18h3v2H6z"/>',
-            "ic_disguise_weather.xml": '<path android:fillColor="#FF142D4A" android:pathData="M0,0h24v24H0z"/><path android:fillColor="#FFFFD166" android:pathData="M16,3a5,5 0,1 0,5 5a4,4 0,0 1,-5 -5z"/><path android:fillColor="#FFEAF6FF" android:pathData="M6,18a4,4 0,0 1,0 -8a5,5 0,0 1,9 -2a4,4 0,0 1,3 7H6z"/>'
-          }
-          for name,paths in vectors.items():
-              (root / "app/src/main/res/drawable" / name).write_text('<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="48dp" android:height="48dp" android:viewportWidth="24" android:viewportHeight="24">' + paths + '</vector>')
-
-          if "private void showAppHider()" not in s or "private void showPrivacyDisguise()" not in s:
-              raise SystemExit("Feature integration verification failed")
-          print("Integrated App Hider entry, launcher disguise presets, icons, and cloud parser fix")
+          if "AppHiderActivity" not in manifest.read_text() or "hidden_packages" not in (app / "src/main/java/com/spyvault/app/AppHiderActivity.java").read_text():
+              raise SystemExit("App Hider integration verification failed")
+          print("Integrated real launcher app drawer with hide/unhide persistence.")
           PY
 
-      - name: Build original SPY VAULT with features
-        shell: bash
+      - name: Build original SPY VAULT
         run: |
           set -euo pipefail
           gradle -p source/SPY_VAULT_0.9.3 --no-daemon clean assembleDebug --stacktrace
 
-      - name: Verify APK identity and feature resources
-        shell: bash
+      - name: Verify APK
         run: |
           set -euo pipefail
           APK=source/SPY_VAULT_0.9.3/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-          file "$APK"
-          sha256sum "$APK"
           BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
-          "$ANDROID_HOME/build-tools/$BT/aapt" dump badging "$APK" | grep -E "package: name='com.spyvault.app'"
-          "$ANDROID_HOME/build-tools/$BT/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -q LauncherCalculator
+          "$ANDROID_HOME/build-tools/$BT/aapt" dump badging "$APK" | grep "package: name='com.spyvault.app'"
+          "$ANDROID_HOME/build-tools/$BT/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -q AppHiderActivity
+          sha256sum "$APK"
 
-      - name: Upload SPY VAULT feature build
+      - name: Upload SPY VAULT 0.9.6 APK
         uses: actions/upload-artifact@v4
         with:
-          name: SPY-VAULT-0.9.5-privacy-features-debug-apk
+          name: SPY-VAULT-0.9.6-real-app-hider-debug-apk
           path: source/SPY_VAULT_0.9.3/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
