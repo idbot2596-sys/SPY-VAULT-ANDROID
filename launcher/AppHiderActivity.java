@@ -218,8 +218,23 @@ public class AppHiderActivity extends Activity {
         badge.setBackground(gradient(ACCENT, ACCENT_2, 16));
         top.addView(badge, lp(42, 42));
         root.addView(top);
+        // The launcher is a separate HOME surface; keep the actual password vault one tap away.
+        brand.setOnClickListener(v -> openVault());
+        badge.setOnClickListener(v -> openVault());
 
-        addGap(root, 16);
+        addGap(root, 12);
+        LinearLayout vaultShortcut = horizontal();
+        vaultShortcut.setPadding(dp(16), dp(10), dp(14), dp(10));
+        vaultShortcut.setBackground(gradient(ACCENT, ACCENT_2, 18));
+        LinearLayout vaultCopy = vertical();
+        vaultCopy.addView(text("OPEN SPY VAULT", 13, TEXT, true));
+        vaultCopy.addView(text("Access your original vault dashboard and features", 10, TEXT, false));
+        vaultShortcut.addView(vaultCopy, new LinearLayout.LayoutParams(0, -2, 1));
+        vaultShortcut.addView(centered("›", 26, TEXT, true), lp(28, 36));
+        vaultShortcut.setOnClickListener(v -> openVault());
+        root.addView(vaultShortcut, lp(-1, 62));
+
+        addGap(root, 12);
         LinearLayout hero = vertical();
         hero.setPadding(dp(18), dp(16), dp(18), dp(16));
         hero.setBackground(gradient(Color.rgb(48, 54, 91), Color.rgb(30, 58, 83), 22));
@@ -415,7 +430,14 @@ public class AppHiderActivity extends Activity {
         header.addView(count, lp(42, 38));
         root.addView(header);
 
-        addGap(root, 14);
+        TextView openVaultAction = centered("OPEN SPY VAULT  ›", 12, TEXT, true);
+        openVaultAction.setBackground(gradient(ACCENT, ACCENT_2, 14));
+        openVaultAction.setOnClickListener(v -> openVault());
+        LinearLayout.LayoutParams vaultActionParams = lp(-1, 44);
+        vaultActionParams.topMargin = dp(10);
+        root.addView(openVaultAction, vaultActionParams);
+
+        addGap(root, 10);
         LinearLayout tabs = horizontal();
         tabs.setPadding(dp(4), dp(4), dp(4), dp(4));
         tabs.setBackground(shape(SURFACE, 16));
@@ -552,6 +574,16 @@ public class AppHiderActivity extends Activity {
             startActivity(intent);
         } catch (Exception e) {
             Toast.makeText(this, "App information is unavailable", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openVault() {
+        try {
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "SPY VAULT could not be opened", Toast.LENGTH_LONG).show();
         }
     }
 
