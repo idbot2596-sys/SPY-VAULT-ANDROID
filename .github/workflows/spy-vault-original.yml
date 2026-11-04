@@ -1,4 +1,4 @@
-name: SPY VAULT Original Java Build
+name: SPY VAULT Original Java Build with Privacy Features
 
 'on':
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build-original:
-    name: Build original SPY VAULT Java app
+    name: Build original SPY VAULT with privacy features
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source repository
@@ -35,15 +35,160 @@ jobs:
           set -euo pipefail
           unzip -q SPY_VAULT_0.9.3_Source.zip -d source
           test -f source/SPY_VAULT_0.9.3/app/src/main/java/com/spyvault/app/MainActivity.java
-          test -f source/SPY_VAULT_0.9.3/app/build.gradle
 
-      - name: Build original Java application
+      - name: Integrate App Hider and launcher disguise features
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("source/SPY_VAULT_0.9.3")
+          java = root / "app/src/main/java/com/spyvault/app/MainActivity.java"
+          s = java.read_text()
+
+          # Fix the escaped-dot parser bug in the saved cloud session token.
+          s = s.replace('packed.split("\\\\.",2)', 'packed.split("\\.",2)')
+
+          settings_anchor = '        settingsRow("Appearance","Theme, accent colors and text size","◐",()->showAppearance());'
+          if settings_anchor not in s:
+              raise SystemExit("Could not find original Settings insertion point")
+          if 'settingsRow("Privacy Disguise"' not in s:
+              s = s.replace(settings_anchor, settings_anchor + '\n        settingsRow("Privacy Disguise","Change launcher name and icon","◉",()->showPrivacyDisguise());')
+          if 'settingsRow("App Hider"' not in s:
+              s = s.replace(settings_anchor, settings_anchor + '\n        settingsRow("App Hider","Open Android app privacy controls","▣",()->showAppHider());')
+
+          methods = r"""
+              private static final String[] DISGUISE_IDS = {"vault","calculator","notes","calendar","weather"};
+              private static final String[] DISGUISE_NAMES = {"SPY VAULT","Calculator","Private Notes","Calendar","Weather"};
+              private static final String[] DISGUISE_COMPONENTS = {
+                  "com.spyvault.app.LauncherVault",
+                  "com.spyvault.app.LauncherCalculator",
+                  "com.spyvault.app.LauncherNotes",
+                  "com.spyvault.app.LauncherCalendar",
+                  "com.spyvault.app.LauncherWeather"
+              };
+
+              private void showPrivacyDisguise() {
+                  initInner("Privacy Disguise","Choose the name and icon shown by your launcher",()->showSettings());
+                  String selected = getPreferences(0).getString("launcher_disguise","vault");
+                  settingsRow("SPY VAULT","Original app identity",selected.equals("vault")?"✓":"◈",()->applyLauncherDisguise(0));
+                  settingsRow("Calculator","Calculator-style launcher identity",selected.equals("calculator")?"✓":"＋",()->applyLauncherDisguise(1));
+                  settingsRow("Private Notes","Notes-style launcher identity",selected.equals("notes")?"✓":"▤",()->applyLauncherDisguise(2));
+                  settingsRow("Calendar","Calendar-style launcher identity",selected.equals("calendar")?"✓":"▦",()->applyLauncherDisguise(3));
+                  settingsRow("Weather","Weather-style launcher identity",selected.equals("weather")?"✓":"☼",()->applyLauncherDisguise(4));
+                  TextView note = txt("These presets change only SPY VAULT's launcher label and icon. They do not hide the app from Android Settings, Play Store, or system app lists. Launcher refresh may take a few seconds.",10,MUTED,false);
+                  LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(-1,-2);
+                  np.topMargin = dp(10);
+                  page.addView(note,np);
+              }
+
+              private void applyLauncherDisguise(int selected) {
+                  android.content.pm.PackageManager pm = getPackageManager();
+                  try {
+                      for (int i=0; i<DISGUISE_COMPONENTS.length; i++) {
+                          android.content.ComponentName component = new android.content.ComponentName(this,DISGUISE_COMPONENTS[i]);
+                          pm.setComponentEnabledSetting(component,
+                              i==selected ? android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED : android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                              android.content.pm.PackageManager.DONT_KILL_APP);
+                      }
+                      getPreferences(0).edit().putString("launcher_disguise",DISGUISE_IDS[selected]).apply();
+                      toast("Launcher identity changed to "+DISGUISE_NAMES[selected]);
+                      showPrivacyDisguise();
+                  } catch (Exception e) {
+                      toast("Could not change launcher identity: "+e.getMessage());
+                  }
+              }
+
+              private void showAppHider() {
+                  initInner("App Hider","Use Android or your phone maker's supported privacy controls",()->showSettings());
+                  TextView explanation = txt("Android does not let an ordinary non-root app silently hide other installed apps from system Settings, package lists, or Play Store. This screen opens the device's built-in controls instead; availability depends on your phone model and Android version.",10,MUTED,false);
+                  LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(-1,-2);
+                  ep.bottomMargin = dp(14);
+                  page.addView(explanation,ep);
+                  settingsRow("Privacy Settings","Open Android privacy controls","◈",()->openSpyVaultPrivacySettings());
+                  settingsRow("Installed Apps","Open Android app management","▣",()->openSpyVaultAppSettings());
+                  settingsRow("Device Private Space","Check Android's supported private profile feature","▤",()->openSpyVaultPrivateSpace());
+                  TextView warning = txt("No root, Device Owner, Accessibility abuse, or silent app disabling is used. If your device has a built-in Hide Apps / Private Space feature, configure it there.",10,MUTED,false);
+                  LinearLayout.LayoutParams wp = new LinearLayout.LayoutParams(-1,-2);
+                  wp.topMargin = dp(12);
+                  page.addView(warning,wp);
+              }
+
+              private void openSpyVaultPrivacySettings() {
+                  try { startActivity(new Intent(android.provider.Settings.ACTION_PRIVACY_SETTINGS)); }
+                  catch (Exception e) { openSpyVaultAppSettings(); }
+              }
+
+              private void openSpyVaultAppSettings() {
+                  try { startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS)); }
+                  catch (Exception e) { toast("Android app settings are unavailable on this device."); }
+              }
+
+              private void openSpyVaultPrivateSpace() {
+                  if (Build.VERSION.SDK_INT >= 35) {
+                      try { startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS)); }
+                      catch (Exception e) { toast("Open Settings and search for Private Space or Hide Apps."); }
+                  } else {
+                      toast("Private Space requires Android 15 or later and device support. Check your phone's Hide Apps settings.");
+                  }
+              }
+
+          """
+          if "private void showPrivacyDisguise()" not in s:
+              anchor = "    private void showSecurity() {"
+              if anchor not in s:
+                  raise SystemExit("Could not find Java method insertion point")
+              s = s.replace(anchor, methods + anchor)
+
+          java.write_text(s)
+
+          # Turn the launcher activity into non-launchable target and expose aliases.
+          manifest = root / "app/src/main/AndroidManifest.xml"
+          m = manifest.read_text()
+          old = re.compile(r'<activity android:name="\.MainActivity" android:exported="true" android:configChanges="keyboardHidden\|orientation\|screenSize">\s*<intent-filter>\s*<action android:name="android.intent.action.MAIN"/>\s*<category android:name="android.intent.category.LAUNCHER"/>\s*</intent-filter>\s*</activity>')
+          aliases = '''
+                  <activity android:name=".MainActivity" android:exported="false" android:configChanges="keyboardHidden|orientation|screenSize" />
+                  <activity-alias android:name=".LauncherVault" android:targetActivity=".MainActivity" android:enabled="true" android:exported="true" android:label="SPY VAULT" android:icon="@mipmap/ic_launcher"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
+                  <activity-alias android:name=".LauncherCalculator" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Calculator" android:icon="@drawable/ic_disguise_calculator"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
+                  <activity-alias android:name=".LauncherNotes" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Private Notes" android:icon="@drawable/ic_disguise_notes"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
+                  <activity-alias android:name=".LauncherCalendar" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Calendar" android:icon="@drawable/ic_disguise_calendar"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
+                  <activity-alias android:name=".LauncherWeather" android:targetActivity=".MainActivity" android:enabled="false" android:exported="true" android:label="Weather" android:icon="@drawable/ic_disguise_weather"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity-alias>
+          '''
+          if ".LauncherVault" not in m:
+              m2, count = old.subn(aliases.strip(),m,count=1)
+              if count != 1:
+                  raise SystemExit("Original launcher activity block did not match; refusing unsafe manifest edit")
+              m = m2
+          manifest.write_text(m)
+
+          gradle = root / "app/build.gradle"
+          g = gradle.read_text().replace("versionCode 23","versionCode 24").replace("versionName '0.9.3'","versionName '0.9.5'")
+          gradle.write_text(g)
+
+          (root / "app/src/main/res/drawable").mkdir(parents=True,exist_ok=True)
+          vectors = {
+            "ic_disguise_calculator.xml": '<path android:fillColor="#FF171923" android:pathData="M4,2h16a2,2 0,0 1,2 2v16a2,2 0,0 1,-2 2H4a2,2 0,0 1,-2 -2V4a2,2 0,0 1,2 -2z"/><path android:fillColor="#FF65D6A5" android:pathData="M6,5h12v4H6z"/><path android:fillColor="#FFFFFFFF" android:pathData="M6,12h3v3H6zM11,12h3v3h-3zM16,12h2v7h-2zM6,17h8v2H6z"/>',
+            "ic_disguise_notes.xml": '<path android:fillColor="#FF192235" android:pathData="M5,2h11l5,5v13a2,2 0,0 1,-2 2H5a2,2 0,0 1,-2 -2V4a2,2 0,0 1,2 -2z"/><path android:fillColor="#FFFFD166" android:pathData="M16,2v5h5z"/><path android:fillColor="#FFFFFFFF" android:pathData="M7,10h10v1.5H7zM7,14h10v1.5H7zM7,18h7v1.5H7z"/>',
+            "ic_disguise_calendar.xml": '<path android:fillColor="#FF20263A" android:pathData="M4,3h16a2,2 0,0 1,2 2v15a2,2 0,0 1,-2 2H4a2,2 0,0 1,-2 -2V5a2,2 0,0 1,2 -2z"/><path android:fillColor="#FFFF647C" android:pathData="M2,7h20v4H2z"/><path android:fillColor="#FFFFFFFF" android:pathData="M6,13h3v3H6zM11,13h3v3h-3zM16,13h3v3h-3zM6,18h3v2H6z"/>',
+            "ic_disguise_weather.xml": '<path android:fillColor="#FF142D4A" android:pathData="M0,0h24v24H0z"/><path android:fillColor="#FFFFD166" android:pathData="M16,3a5,5 0,1 0,5 5a4,4 0,0 1,-5 -5z"/><path android:fillColor="#FFEAF6FF" android:pathData="M6,18a4,4 0,0 1,0 -8a5,5 0,0 1,9 -2a4,4 0,0 1,3 7H6z"/>'
+          }
+          for name,paths in vectors.items():
+              (root / "app/src/main/res/drawable" / name).write_text('<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="48dp" android:height="48dp" android:viewportWidth="24" android:viewportHeight="24">' + paths + '</vector>')
+
+          if "private void showAppHider()" not in s or "private void showPrivacyDisguise()" not in s:
+              raise SystemExit("Feature integration verification failed")
+          print("Integrated App Hider entry, launcher disguise presets, icons, and cloud parser fix")
+          PY
+
+      - name: Build original SPY VAULT with features
         shell: bash
         run: |
           set -euo pipefail
           gradle -p source/SPY_VAULT_0.9.3 --no-daemon clean assembleDebug --stacktrace
 
-      - name: Verify package and APK
+      - name: Verify APK identity and feature resources
         shell: bash
         run: |
           set -euo pipefail
@@ -51,12 +196,14 @@ jobs:
           test -s "$APK"
           file "$APK"
           sha256sum "$APK"
-          $ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt dump badging "$APK" | grep -E "package: name='com.spyvault.app'"
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          "$ANDROID_HOME/build-tools/$BT/aapt" dump badging "$APK" | grep -E "package: name='com.spyvault.app'"
+          "$ANDROID_HOME/build-tools/$BT/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -q LauncherCalculator
 
-      - name: Upload original SPY VAULT APK
+      - name: Upload SPY VAULT feature build
         uses: actions/upload-artifact@v4
         with:
-          name: SPY-VAULT-original-java-debug-apk
+          name: SPY-VAULT-0.9.5-privacy-features-debug-apk
           path: source/SPY_VAULT_0.9.3/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
