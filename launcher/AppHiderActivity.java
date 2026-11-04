@@ -318,15 +318,21 @@ public class AppHiderActivity extends Activity {
             if (hidden.contains(pkg)) continue;
             String name = String.valueOf(info.loadLabel(packageManager));
             if (!name.toLowerCase(Locale.ROOT).contains(q) && !pkg.toLowerCase(Locale.ROOT).contains(q)) continue;
-            grid.addView(appTile(info, name), new GridLayout.LayoutParams());
+            GridLayout.LayoutParams tileParams = new GridLayout.LayoutParams();
+            tileParams.width = 0;
+            tileParams.height = dp(105);
+            tileParams.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
+            tileParams.setMargins(dp(2), dp(2), dp(2), dp(2));
+            grid.addView(appTile(info, name), tileParams);
             count++;
         }
         if (count == 0) {
             TextView empty = centered(q.isEmpty() ? "No launchable apps found" : "No apps match your search",
                     13, MUTED, false);
             GridLayout.LayoutParams p = new GridLayout.LayoutParams();
-            p.width = dp(320);
+            p.width = -1;
             p.height = dp(105);
+            p.columnSpec = GridLayout.spec(0, 4);
             grid.addView(empty, p);
         }
     }
