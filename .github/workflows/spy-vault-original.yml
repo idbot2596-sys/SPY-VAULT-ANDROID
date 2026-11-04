@@ -378,11 +378,13 @@ jobs:
           mkdir -p "$(dirname "$DEST")"
           cp launcher/AppHiderActivity.java "$DEST"
           GRADLE_FILE=source/SPY_VAULT_0.9.3/app/build.gradle
-          sed -i "s/versionCode 24/versionCode 25/" "$GRADLE_FILE"
-          sed -i "s/versionName '0.9.5'/versionName '0.9.6'/" "$GRADLE_FILE"
+          sed -i "s/versionCode 24/versionCode 26/" "$GRADLE_FILE"
+          sed -i "s/versionName '0.9.5'/versionName '0.9.7'/" "$GRADLE_FILE"
           grep -q 'void showHome()' "$DEST"
           grep -q 'void showDrawer()' "$DEST"
           grep -q 'void onBackPressed()' "$DEST"
+          grep -q 'void openVault()' "$DEST"
+          grep -q 'OPEN SPY VAULT' "$DEST"
           grep -q 'KEY_HIDDEN' "$DEST"
           echo "Professional Home screen, app drawer, search, hide/restore and Back handling installed."
 
