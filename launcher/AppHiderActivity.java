@@ -110,13 +110,18 @@ public class AppHiderActivity extends Activity {
         apps.clear();
         Intent query = new Intent(Intent.ACTION_MAIN);
         query.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> found = packageManager.queryIntentActivities(query, PackageManager.MATCH_DEFAULT_ONLY);
+        // Do not use MATCH_DEFAULT_ONLY here: many valid launcher entries declare
+        // MAIN + LAUNCHER without CATEGORY_DEFAULT and would otherwise disappear.
+        List<ResolveInfo> found = packageManager.queryIntentActivities(query, 0);
         LinkedHashMap<String, ResolveInfo> unique = new LinkedHashMap<>();
         for (ResolveInfo info : found) {
-            if (info == null || info.activityInfo == null) continue;
+            if (info == null || info.activityInfo == null || !info.activityInfo.enabled) continue;
             String pkg = info.activityInfo.packageName;
-            if (pkg == null || pkg.equals(getPackageName())) continue;
-            if (!unique.containsKey(pkg)) unique.put(pkg, info);
+            String activity = info.activityInfo.name;
+            if (pkg == null || activity == null || pkg.equals(getPackageName())) continue;
+            // Keep each launcher component. A package may expose more than one real app entry.
+            String componentKey = pkg + "/" + activity;
+            if (!unique.containsKey(componentKey)) unique.put(componentKey, info);
         }
         apps.addAll(unique.values());
         Collections.sort(apps, new Comparator<ResolveInfo>() {
@@ -529,13 +534,11 @@ public class AppHiderActivity extends Activity {
 
     private void launchApp(ResolveInfo info) {
         try {
-            Intent launch = packageManager.getLaunchIntentForPackage(info.activityInfo.packageName);
-            if (launch == null) {
-                launch = new Intent(Intent.ACTION_MAIN);
-                launch.addCategory(Intent.CATEGORY_LAUNCHER);
-                launch.setComponent(new ComponentName(info.activityInfo.packageName, info.activityInfo.name));
-            }
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            // Launch the exact icon entry as a separate Android task, like a normal launcher.
+            Intent launch = new Intent(Intent.ACTION_MAIN);
+            launch.addCategory(Intent.CATEGORY_LAUNCHER);
+            launch.setComponent(new ComponentName(info.activityInfo.packageName, info.activityInfo.name));
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
             startActivity(launch);
         } catch (Exception e) {
             Toast.makeText(this, "This app could not be opened", Toast.LENGTH_SHORT).show();
